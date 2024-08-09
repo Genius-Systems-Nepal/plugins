@@ -23,7 +23,7 @@ dependencies:
   flutter_secure_storage_tizen: ^0.1.0
   flutter_svg: ^1.1.5
   google_sign_in_platform_interface: ^2.3.0
-  http: ^0.13.4
+  http: ^1.0.0
 
 dev_dependencies:
   flutter_test:
