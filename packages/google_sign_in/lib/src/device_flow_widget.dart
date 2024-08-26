@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 
 /// The [GlobalKey] that identifies a [NavigatorState].
@@ -34,12 +35,9 @@ void showDeviceFlowWidget({
     context: navigatorKey.currentContext!,
     barrierDismissible: false,
     builder: (BuildContext context) {
-      final TextStyle bodyStyle =
-          Theme.of(context).textTheme.bodyLarge!.copyWith(color: Colors.black);
-      final TextStyle titleStyle = Theme.of(context)
-          .textTheme
-          .titleLarge!
-          .copyWith(color: Colors.black, fontWeight: FontWeight.bold);
+      final TextStyle bodyStyle = Theme.of(context).textTheme.bodyLarge!.copyWith(color: Colors.black);
+      final TextStyle titleStyle =
+          Theme.of(context).textTheme.titleLarge!.copyWith(color: Colors.black, fontWeight: FontWeight.bold);
 
       return AlertDialog(
         scrollable: true,
@@ -93,12 +91,28 @@ void showDeviceFlowWidget({
               },
             ),
             const SizedBox(height: 15),
-            ElevatedButton(
-              onPressed: () {
-                onCanceled?.call();
-                closeDeviceFlowWidget();
+            Focus(
+              onKeyEvent: (node, keyEvent) {
+                if (keyEvent is KeyDownEvent) {
+                  if (keyEvent.logicalKey == LogicalKeyboardKey.escape || keyEvent.logicalKey == LogicalKeyboardKey.goBack) {
+                    onCanceled?.call();
+                    return KeyEventResult.handled;
+                  }
+                }
+                return KeyEventResult.ignored;
               },
-              child: const Text('Cancel'),
+              focusNode: FocusNode(),
+              child: ElevatedButton(
+                autofocus: true,
+                onPressed: () {
+                  onCanceled?.call();
+                  closeDeviceFlowWidget();
+                },
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
             ),
           ],
         ),
@@ -146,8 +160,7 @@ class _CountdownTimerState extends State<_CountdownTimer> {
   @override
   Widget build(BuildContext context) {
     final String minutes = _remaining.inMinutes.toString().padLeft(2, '0');
-    final String seconds =
-        _remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final String seconds = _remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
     return FittedBox(child: Text('$minutes:$seconds', style: widget.style));
   }
 
