@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 
 import 'dart:convert' as convert;
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'authorization_exception.dart';
@@ -112,6 +114,7 @@ class DeviceAuthClient {
     required this.authorizationEndPoint,
     required this.tokenEndPoint,
     required this.revokeEndPoint,
+    required this.userAgent,
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
 
@@ -124,6 +127,8 @@ class DeviceAuthClient {
   /// The server endpoint that revokes future access to issued tokens.
   final Uri revokeEndPoint;
 
+  final String userAgent;
+
   final http.Client _httpClient;
 
   bool _isPolling = false;
@@ -134,19 +139,39 @@ class DeviceAuthClient {
   /// Stops poll request started by [pollToken].
   void cancelPollToken() => _isPolling = false;
 
-  /// Requests authroization grant from [authorizationEndPoint].
-  Future<AuthorizationResponse> requestAuthorization(
-      String clientId, List<String> scope) async {
-    final Map<String, String> body = <String, String>{
-      'client_id': clientId,
-      'scope': scope.join(' '),
+  /// Requests authorization grant from [authorizationEndPoint].
+  Future<AuthorizationResponse> requestAuthorization() async {
+    if (kDebugMode) {
+      print('=====================================================');
+      print('Starting Authorization....');
+      print('=====================================================');
+    }
+    final Map<String, String> headers = <String, String>{
+      'User-Agent': userAgent
     };
+    final http.Response response = await _httpClient.get(
+      authorizationEndPoint,
+      headers: headers,
+    );
 
-    final http.Response response =
-        await _httpClient.post(authorizationEndPoint, body: body);
+    final String curl = generateCurlCommand(
+      authorizationEndPoint.toString(),
+      method: "GET",
+      headers: headers,
+    );
+    if (kDebugMode) {
+      print('=====================================================');
+      print(curl);
+      print('=====================================================');
+    }
 
     if (response.statusCode != 200) {
       _handleErrorResponse(response);
+    }
+    if (kDebugMode) {
+      print('=====================================================');
+      print(response.statusCode);
+      print('=====================================================');
     }
 
     return AuthorizationResponse.fromJson(
@@ -155,20 +180,32 @@ class DeviceAuthClient {
 
   /// Requests tokens from [tokenEndPoint].
   Future<TokenResponse> requestToken(
-    String clientId,
-    String clientSecret,
     String deviceCode,
   ) async {
-    final Map<String, String> body = <String, String>{
-      'grant_type': 'http://oauth.net/grant_type/device/1.0',
-      'client_id': clientId,
-      'client_secret': clientSecret,
-      'code': deviceCode,
+    if (kDebugMode) {
+      print('=====================================================');
+      print(
+          "URL :: '${tokenEndPoint.origin}${tokenEndPoint.path}?device_code=$deviceCode'");
+      print('=====================================================');
+    }
+    final Map<String, String> headers = <String, String>{
+      'User-Agent': userAgent
     };
-
-    final http.Response response =
-        await _httpClient.post(tokenEndPoint, body: body);
-
+    final http.Response response = await _httpClient.get(
+      Uri.parse(
+          '${tokenEndPoint.origin}${tokenEndPoint.path}?device_code=$deviceCode'),
+      headers: headers,
+    );
+    final String curl = generateCurlCommand(
+      '${tokenEndPoint.origin}${tokenEndPoint.path}?device_code=$deviceCode',
+      method: 'GET',
+      headers: headers,
+    );
+    if (kDebugMode) {
+      print('=====================================================');
+      print(curl);
+      print('=====================================================');
+    }
     if (response.statusCode != 200) {
       _handleErrorResponse(response);
     }
@@ -178,9 +215,47 @@ class DeviceAuthClient {
   }
 
   /// Repeat sending token request to [tokenEndPoint] until user grants access.
+  // Future<TokenResponse?> pollToken({
+  //   required String clientId,
+  //   required String clientSecret,
+  //   required String deviceCode,
+  //   required Duration interval,
+  // }) async {
+  //   if (isPolling) {
+  //     throw StateError(
+  //       'Client is already polling token from server, cancel the '
+  //       'previous poll request before starting a new one.',
+  //     );
+  //   }
+  //   _isPolling = true;
+  //   while (isPolling) {
+  //     try {
+  //       final TokenResponse tokenResponse = await Future<TokenResponse>.delayed(
+  //         interval,
+  //         () => requestToken(clientId, clientSecret, deviceCode),
+  //       );
+  //       _isPolling = false;
+  //       return tokenResponse;
+  //     } on AuthorizationException catch (e) {
+  //       // Subsequent requests MUST be increased by 5 seconds.
+  //       // See: https://datatracker.ietf.org/doc/html/rfc8628#section-3.5.
+  //       if (e.error == 'slow_down') {
+  //         interval = interval + const Duration(seconds: 5);
+  //       }
+  //       // The authorization request is still pending as the end user hasn't
+  //       // yet completed the user-interaction steps.
+  //       else if (e.error != 'authorization_pending') {
+  //         _isPolling = false;
+  //         rethrow;
+  //       }
+  //     }
+  //   }
+  //   return null;
+  // }
+
   Future<TokenResponse?> pollToken({
-    required String clientId,
-    required String clientSecret,
+    // required String clientId,
+    // required String clientSecret,
     required String deviceCode,
     required Duration interval,
   }) async {
@@ -193,9 +268,15 @@ class DeviceAuthClient {
     _isPolling = true;
     while (isPolling) {
       try {
+        if (kDebugMode) {
+          print('=====================================================');
+          print(
+              'Polling for token with deviceCode:: $deviceCode and interval ::  $interval');
+          print('=====================================================');
+        }
         final TokenResponse tokenResponse = await Future<TokenResponse>.delayed(
           interval,
-          () => requestToken(clientId, clientSecret, deviceCode),
+          () => requestToken(deviceCode),
         );
         _isPolling = false;
         return tokenResponse;
@@ -231,13 +312,13 @@ class DeviceAuthClient {
 
   /// Requests a refresh token request to [tokenEndPoint].
   Future<TokenResponse> refreshToken({
-    required String clientId,
-    required String clientSecret,
+    // required String clientId,
+    // required String clientSecret,
     required String refreshToken,
   }) async {
     final Map<String, String> body = <String, String>{
-      'client_id': clientId,
-      'client_secret': clientSecret,
+      // 'client_id': clientId,
+      // 'client_secret': clientSecret,
       'refresh_token': refreshToken,
       'grant_type': 'refresh_token',
     };
@@ -271,5 +352,36 @@ class DeviceAuthClient {
       throw HttpException(
           'Status code: ${response.statusCode}, ${response.reasonPhrase}.');
     }
+  }
+
+  ///Generates Curl command for the requested URL
+  String generateCurlCommand(
+    String url, {
+    String method = 'GET',
+    Map<String, String>? headers,
+    dynamic body,
+  }) {
+    final StringBuffer curlCommand = StringBuffer('curl');
+
+    curlCommand.write(' -X $method');
+
+    curlCommand.write(" '$url'");
+
+    headers?.forEach((String key, String value) {
+      curlCommand.write(" -H '$key: $value'");
+    });
+
+    // Add body
+    if (body != null) {
+      String bodyStr;
+      if (body is String) {
+        bodyStr = body;
+      } else {
+        bodyStr = json.encode(body);
+      }
+      curlCommand.write(" -d '$bodyStr'");
+    }
+
+    return curlCommand.toString();
   }
 }

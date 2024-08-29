@@ -4,6 +4,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -124,12 +125,12 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
 
   List<String> _scopes = <String>[];
 
-  final DeviceAuthClient _authClient = DeviceAuthClient(
-    authorizationEndPoint:
-        Uri.parse('https://oauth2.googleapis.com/device/code'),
-    tokenEndPoint: Uri.parse('https://oauth2.googleapis.com/token'),
-    revokeEndPoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
-  );
+  static DeviceAuthClient _authClient = DeviceAuthClient(
+      authorizationEndPoint:
+          Uri.parse('https://oauth2.googleapis.com/device/code'),
+      tokenEndPoint: Uri.parse('https://oauth2.googleapis.com/token'),
+      revokeEndPoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
+      userAgent: '');
 
   /// Sets [clientId] and [clientSecret] to be used for GoogleSignIn authentication.
   ///
@@ -137,7 +138,22 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
   static void setCredentials({
     required String clientId,
     required String clientSecret,
+    required String authorizationEnpoint,
+    required String tokenEndpoint,
+    required String userAgent,
   }) {
+    if (kDebugMode) {
+      print('=====================================================');
+      print('### Authorization Endpoint ### $authorizationEnpoint');
+      print('### Token Endpoint ### $tokenEndpoint');
+      print('### User-Agent ### $userAgent');
+      print('=====================================================');
+    }
+    _authClient = DeviceAuthClient(
+        authorizationEndPoint: Uri.parse(authorizationEnpoint),
+        tokenEndPoint: Uri.parse(tokenEndpoint),
+        revokeEndPoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
+        userAgent: userAgent);
     _credentials = _Credentials(clientId, clientSecret);
   }
 
@@ -228,14 +244,9 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
     _ensureNavigatorKeyAssigned();
 
     final AuthorizationResponse authorizationResponse =
-        await _authClient.requestAuthorization(
-      _credentials!.clientId,
-      _scopes,
-    );
+        await _authClient.requestAuthorization();
 
     final Future<TokenResponse?> tokenResponseFuture = _authClient.pollToken(
-      clientId: _credentials!.clientId,
-      clientSecret: _credentials!.clientSecret,
       deviceCode: authorizationResponse.deviceCode,
       interval: authorizationResponse.interval,
     );
@@ -355,8 +366,6 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
     _ensureSetCredentials();
 
     final TokenResponse tokenResponse = await _authClient.refreshToken(
-      clientId: _credentials!.clientId,
-      clientSecret: _credentials!.clientSecret,
       refreshToken: token.refreshToken!,
     );
 

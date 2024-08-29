@@ -25,6 +25,9 @@ void main() {
   GoogleSignInTizen.setCredentials(
     clientId: credentials.cliendId,
     clientSecret: credentials.clientSecret,
+    authorizationEnpoint: '',
+    tokenEndpoint: '',
+    userAgent: '',
   );
   runApp(
     MaterialApp(
