@@ -116,6 +116,7 @@ class DeviceAuthClient {
     required this.revokeEndPoint,
     required this.userAgent,
     http.Client? httpClient,
+    this.requestTimeout = const Duration(seconds: 15),
   }) : _httpClient = httpClient ?? http.Client();
 
   /// The server endpoint that returns authroization grant when user grants access.
@@ -128,6 +129,9 @@ class DeviceAuthClient {
   final Uri revokeEndPoint;
 
   final String userAgent;
+
+  /// The timeout duration for HTTP requests. Defaults to 30 seconds.
+  final Duration requestTimeout;
 
   final http.Client _httpClient;
 
@@ -149,10 +153,29 @@ class DeviceAuthClient {
     final Map<String, String> headers = <String, String>{
       'User-Agent': userAgent
     };
-    final http.Response response = await _httpClient.get(
-      authorizationEndPoint,
-      headers: headers,
-    );
+    
+    final http.Response response;
+    try {
+      response = await _httpClient.get(
+        authorizationEndPoint,
+        headers: headers,
+      ).timeout(
+        requestTimeout,
+        onTimeout: () {
+          throw HttpException(
+            'Request to authorization endpoint timed out after ${requestTimeout.inSeconds} seconds. '
+            'Please check your internet connection.',
+          );
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('=====================================================');
+        print('Authorization request failed: $e');
+        print('=====================================================');
+      }
+      rethrow;
+    }
 
     final String curl = generateCurlCommand(
       authorizationEndPoint.toString(),
@@ -191,11 +214,31 @@ class DeviceAuthClient {
     final Map<String, String> headers = <String, String>{
       'User-Agent': userAgent
     };
-    final http.Response response = await _httpClient.get(
-      Uri.parse(
-          '${tokenEndPoint.origin}${tokenEndPoint.path}?device_code=$deviceCode'),
-      headers: headers,
-    );
+    
+    final http.Response response;
+    try {
+      response = await _httpClient.get(
+        Uri.parse(
+            '${tokenEndPoint.origin}${tokenEndPoint.path}?device_code=$deviceCode'),
+        headers: headers,
+      ).timeout(
+        requestTimeout,
+        onTimeout: () {
+          throw HttpException(
+            'Request to token endpoint timed out after ${requestTimeout.inSeconds} seconds. '
+            'Please check your internet connection.',
+          );
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('=====================================================');
+        print('Token request failed: $e');
+        print('=====================================================');
+      }
+      rethrow;
+    }
+    
     final String curl = generateCurlCommand(
       '${tokenEndPoint.origin}${tokenEndPoint.path}?device_code=$deviceCode',
       method: 'GET',
@@ -303,8 +346,26 @@ class DeviceAuthClient {
       'token': token,
     };
 
-    final http.Response response =
-        await _httpClient.post(revokeEndPoint, body: body);
+    final http.Response response;
+    try {
+      response = await _httpClient.post(revokeEndPoint, body: body).timeout(
+        requestTimeout,
+        onTimeout: () {
+          throw HttpException(
+            'Request to revoke endpoint timed out after ${requestTimeout.inSeconds} seconds. '
+            'Please check your internet connection.',
+          );
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('=====================================================');
+        print('Revoke token request failed: $e');
+        print('=====================================================');
+      }
+      rethrow;
+    }
+    
     if (response.statusCode != 200) {
       _handleErrorResponse(response);
     }
@@ -323,8 +384,25 @@ class DeviceAuthClient {
       'grant_type': 'refresh_token',
     };
 
-    final http.Response response =
-        await _httpClient.post(tokenEndPoint, body: body);
+    final http.Response response;
+    try {
+      response = await _httpClient.post(tokenEndPoint, body: body).timeout(
+        requestTimeout,
+        onTimeout: () {
+          throw HttpException(
+            'Refresh token request timed out after ${requestTimeout.inSeconds} seconds. '
+            'Please check your internet connection.',
+          );
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('=====================================================');
+        print('Refresh token request failed: $e');
+        print('=====================================================');
+      }
+      rethrow;
+    }
 
     if (response.statusCode != 200) {
       _handleErrorResponse(response);
