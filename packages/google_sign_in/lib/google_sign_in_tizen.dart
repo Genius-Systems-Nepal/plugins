@@ -4,6 +4,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -124,20 +125,42 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
 
   List<String> _scopes = <String>[];
 
-  final DeviceAuthClient _authClient = DeviceAuthClient(
-    authorizationEndPoint:
-        Uri.parse('https://oauth2.googleapis.com/device/code'),
-    tokenEndPoint: Uri.parse('https://oauth2.googleapis.com/token'),
-    revokeEndPoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
-  );
+  static DeviceAuthClient _authClient = DeviceAuthClient(
+      authorizationEndPoint:
+          Uri.parse('https://oauth2.googleapis.com/device/code'),
+      tokenEndPoint: Uri.parse('https://oauth2.googleapis.com/token'),
+      revokeEndPoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
+      userAgent: '',
+      requestTimeout: const Duration(seconds: 15));
 
   /// Sets [clientId] and [clientSecret] to be used for GoogleSignIn authentication.
   ///
   /// This must be called before calling the GoogleSignIn's signIn API.
+  /// 
+  /// The [requestTimeout] parameter specifies the timeout duration for HTTP requests.
+  /// Defaults to 30 seconds. Increase this value if you expect slow network conditions.
   static void setCredentials({
     required String clientId,
     required String clientSecret,
+    required String authorizationEnpoint,
+    required String tokenEndpoint,
+    required String userAgent,
+    Duration requestTimeout = const Duration(seconds: 15),
   }) {
+    if (kDebugMode) {
+      print('=====================================================');
+      print('### Authorization Endpoint ### $authorizationEnpoint');
+      print('### Token Endpoint ### $tokenEndpoint');
+      print('### User-Agent ### $userAgent');
+      print('### Request Timeout ### ${requestTimeout.inSeconds} seconds');
+      print('=====================================================');
+    }
+    _authClient = DeviceAuthClient(
+        authorizationEndPoint: Uri.parse(authorizationEnpoint),
+        tokenEndPoint: Uri.parse(tokenEndpoint),
+        revokeEndPoint: Uri.parse('https://oauth2.googleapis.com/revoke'),
+        userAgent: userAgent,
+        requestTimeout: requestTimeout);
     _credentials = _Credentials(clientId, clientSecret);
   }
 
@@ -226,16 +249,13 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
   Future<GoogleSignInUserData?> signIn() async {
     _ensureSetCredentials();
     _ensureNavigatorKeyAssigned();
-
+    try{
     final AuthorizationResponse authorizationResponse =
-        await _authClient.requestAuthorization(
-      _credentials!.clientId,
-      _scopes,
-    );
+        await _authClient.requestAuthorization().catchError((e){
+          throw e.toString();
+        });
 
     final Future<TokenResponse?> tokenResponseFuture = _authClient.pollToken(
-      clientId: _credentials!.clientId,
-      clientSecret: _credentials!.clientSecret,
       deviceCode: authorizationResponse.deviceCode,
       interval: authorizationResponse.interval,
     );
@@ -269,6 +289,14 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
     await _storage.saveToken(token);
 
     return _createUserData(token.idToken);
+    }catch(e){
+      print('hahaha');
+        print(e.toString());
+        throw PlatformException(
+        code: 'not-signed-in',
+        message: '${e}',
+      );
+    }
   }
 
   @override
@@ -355,8 +383,6 @@ class GoogleSignInTizen extends GoogleSignInPlatform {
     _ensureSetCredentials();
 
     final TokenResponse tokenResponse = await _authClient.refreshToken(
-      clientId: _credentials!.clientId,
-      clientSecret: _credentials!.clientSecret,
       refreshToken: token.refreshToken!,
     );
 
